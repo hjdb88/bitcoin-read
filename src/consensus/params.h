@@ -70,10 +70,11 @@ struct BIP9Deployment {
 
 /**
  * Parameters that influence chain consensus.
+ * 影响链共识的参数。
  */
 struct Params {
-    uint256 hashGenesisBlock;
-    int nSubsidyHalvingInterval;
+    uint256 hashGenesisBlock; // 创世区块hash
+    int nSubsidyHalvingInterval; // 区块奖励减半时间间隔
     /**
      * Hashes of blocks that
      * - are known to be consensus valid, and
@@ -106,10 +107,10 @@ struct Params {
     uint32_t nMinerConfirmationWindow;
     BIP9Deployment vDeployments[MAX_VERSION_BITS_DEPLOYMENTS];
     /** Proof of work parameters */
-    uint256 powLimit;
-    bool fPowAllowMinDifficultyBlocks;
+    uint256 powLimit; // 难度
+    bool fPowAllowMinDifficultyBlocks; // 
     bool fPowNoRetargeting;
-    int64_t nPowTargetSpacing;
+    int64_t nPowTargetSpacing; // 区块产生平均时间
     int64_t nPowTargetTimespan;
     std::chrono::seconds PowTargetSpacing() const
     {

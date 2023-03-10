@@ -102,6 +102,7 @@ void BlockAssembler::resetBlock()
     nFees = 0;
 }
 
+// 参数scriptPubKeyIn表示Coinbase交易输出的锁定脚本
 std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& scriptPubKeyIn)
 {
     const auto time_start{SteadyClock::now()};
@@ -121,10 +122,11 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     pblocktemplate->vTxSigOpsCost.push_back(-1); // updated at end
 
     LOCK(::cs_main);
-    CBlockIndex* pindexPrev = m_chainstate.m_chain.Tip();
+    CBlockIndex* pindexPrev = m_chainstate.m_chain.Tip(); // 选择当前最长链，最高区块
     assert(pindexPrev != nullptr);
     nHeight = pindexPrev->nHeight + 1;
 
+    // 设置版本号字段
     pblock->nVersion = m_chainstate.m_chainman.m_versionbitscache.ComputeBlockVersion(pindexPrev, chainparams.GetConsensus());
     // -regtest only: allow overriding block.nVersion with
     // -blockversion=N to test forking scenarios
@@ -132,6 +134,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
         pblock->nVersion = gArgs.GetIntArg("-blockversion", pblock->nVersion);
     }
 
+    // 设置时间戳
     pblock->nTime = TicksSinceEpoch<std::chrono::seconds>(GetAdjustedTime());
     m_lock_time_cutoff = pindexPrev->GetMedianTimePast();
 
@@ -139,6 +142,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     int nDescendantsUpdated = 0;
     if (m_mempool) {
         LOCK(m_mempool->cs);
+        // 添加交易池中的交易到区块中
         addPackageTxs(*m_mempool, nPackagesSelected, nDescendantsUpdated);
     }
 
@@ -148,23 +152,32 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     m_last_block_weight = nBlockWeight;
 
     // Create coinbase transaction.
+    // 创建 coinbase 交易
     CMutableTransaction coinbaseTx;
     coinbaseTx.vin.resize(1);
+    // coinbase没有输入，只有输出
     coinbaseTx.vin[0].prevout.SetNull();
     coinbaseTx.vout.resize(1);
+    // 锁定脚本
     coinbaseTx.vout[0].scriptPubKey = scriptPubKeyIn;
+    // 计算交易费+挖矿奖励
     coinbaseTx.vout[0].nValue = nFees + GetBlockSubsidy(nHeight, chainparams.GetConsensus());
     coinbaseTx.vin[0].scriptSig = CScript() << nHeight << OP_0;
+    // Coinbase交易放到交易列表的第一位，区块中的第一笔交易
     pblock->vtx[0] = MakeTransactionRef(std::move(coinbaseTx));
+    // 输出给矿工，交易费+挖矿奖励
     pblocktemplate->vchCoinbaseCommitment = m_chainstate.m_chainman.GenerateCoinbaseCommitment(*pblock, pindexPrev);
     pblocktemplate->vTxFees[0] = -nFees;
 
     LogPrintf("CreateNewBlock(): block weight: %u txs: %u fees: %ld sigops %d\n", GetBlockWeight(*pblock), nBlockTx, nFees, nBlockSigOpsCost);
 
     // Fill in header
+    // 设置区块头中前一区块哈希字段
     pblock->hashPrevBlock  = pindexPrev->GetBlockHash();
     UpdateTime(pblock, chainparams.GetConsensus(), pindexPrev);
+    // 计算难度值，设置难度值字段
     pblock->nBits          = GetNextWorkRequired(pindexPrev, pblock, chainparams.GetConsensus());
+    // 随机数，初始置为0，等待后面不断调整
     pblock->nNonce         = 0;
     pblocktemplate->vTxSigOpsCost[0] = WITNESS_SCALE_FACTOR * GetLegacySigOpCount(*pblock->vtx[0]);
 
@@ -289,14 +302,19 @@ void BlockAssembler::SortForBlock(const CTxMemPool::setEntries& package, std::ve
 // Each time through the loop, we compare the best transaction in
 // mapModifiedTxs with the next transaction in the mempool to decide what
 // transaction package to work on next.
+// 该交易选择算法根据包括所有未确认祖先的交易费率对内存池进行排序。由于我们在选择交易以进行区块包含时不会从内存池中删除交易，因此我们
+// 需要一种替代方法来更新交易的费率及其尚未选择的祖先。这是通过遍历所选交易的内存池后代并将临时修改状态存储在 mapModifiedTxs 中来实
+// 现的。每次通过循环，我们将 mapModifiedTxs 中的最佳交易与 mempool 中的下一个交易进行比较，以决定接下来要处理的交易包。
 void BlockAssembler::addPackageTxs(const CTxMemPool& mempool, int& nPackagesSelected, int& nDescendantsUpdated)
 {
     AssertLockHeld(mempool.cs);
 
     // mapModifiedTx will store sorted packages after they are modified
     // because some of their txs are already in the block
+    // mapModifiedTx 将存储修改后排序的包
     indexed_modified_transaction_set mapModifiedTx;
     // Keep track of entries that failed inclusion, to avoid duplicate work
+    // 记录未能包含的条目避免重复工作
     CTxMemPool::setEntries failedTx;
 
     CTxMemPool::indexed_transaction_set::index<ancestor_score>::type::iterator mi = mempool.mapTx.get<ancestor_score>().begin();
@@ -305,6 +323,7 @@ void BlockAssembler::addPackageTxs(const CTxMemPool& mempool, int& nPackagesSele
     // Limit the number of attempts to add transactions to the block when it is
     // close to full; this is just a simple heuristic to finish quickly if the
     // mempool has a lot of entries.
+    // 当区块接近满时限制尝试加入交易的次数。这是针对交易池有许多记录时的一个简单处理方式。
     const int64_t MAX_CONSECUTIVE_FAILURES = 1000;
     int64_t nConsecutiveFailed = 0;
 

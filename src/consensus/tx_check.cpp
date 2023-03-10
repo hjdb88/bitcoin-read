@@ -8,9 +8,11 @@
 #include <primitives/transaction.h>
 #include <consensus/validation.h>
 
+// 校验交易
 bool CheckTransaction(const CTransaction& tx, TxValidationState& state)
 {
     // Basic checks that don't depend on any context
+    // 输入、输出不能为空
     if (tx.vin.empty())
         return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-vin-empty");
     if (tx.vout.empty())
@@ -20,6 +22,7 @@ bool CheckTransaction(const CTransaction& tx, TxValidationState& state)
         return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-oversize");
 
     // Check for negative or overflow output values (see CVE-2010-5139)
+    // 检查负值或溢出
     CAmount nValueOut = 0;
     for (const auto& txout : tx.vout)
     {
@@ -37,6 +40,7 @@ bool CheckTransaction(const CTransaction& tx, TxValidationState& state)
     // of a tx as spent, it does not check if the tx has duplicate inputs.
     // Failure to run this check will result in either a crash or an inflation bug, depending on the implementation of
     // the underlying coins database.
+    // 检查重复输入
     std::set<COutPoint> vInOutPoints;
     for (const auto& txin : tx.vin) {
         if (!vInOutPoints.insert(txin.prevout).second)

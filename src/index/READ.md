@@ -1,0 +1,1 @@
+# 交易读写，查询交易数据并同步到leveldb；包括区块链数据索引基础类，其实现了CValidationInterface虚类。

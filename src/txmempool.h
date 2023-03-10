@@ -83,6 +83,7 @@ struct mempoolentry_wtxid
 /** \class CompareTxMemPoolEntryByDescendantScore
  *
  *  Sort an entry by max(score/size of entry's tx, score/size with all descendants).
+ * 按最大值（条目的 tx 的分数/大小，所有后代的分数/大小）对条目进行排序。
  */
 class CompareTxMemPoolEntryByDescendantScore
 {
@@ -128,6 +129,7 @@ public:
  *  This is only used for transaction relay, so we use GetFee()
  *  instead of GetModifiedFee() to avoid leaking prioritization
  *  information via the sort order.
+ * 按报名费率（费用/规模）降序排列
  */
 class CompareTxMemPoolEntryByScore
 {
@@ -155,6 +157,7 @@ public:
 /** \class CompareTxMemPoolEntryByAncestorScore
  *
  *  Sort an entry by min(score/size of entry's tx, score/size with all ancestors).
+ * 按最小值（条目 tx 的分数/大小，所有祖先的分数/大小）对条目进行排序。
  */
 class CompareTxMemPoolEntryByAncestorFee
 {
@@ -210,19 +213,19 @@ class CBlockPolicyEstimator;
 struct TxMempoolInfo
 {
     /** The transaction itself */
-    CTransactionRef tx;
+    CTransactionRef tx; // 交易引用
 
     /** Time the transaction entered the mempool. */
-    std::chrono::seconds m_time;
+    std::chrono::seconds m_time; // 交易时间
 
     /** Fee of the transaction. */
-    CAmount fee;
+    CAmount fee; // 交易费用
 
     /** Virtual size of the transaction. */
-    size_t vsize;
+    size_t vsize; // 交易的虚拟大小
 
     /** The fee delta. */
-    int64_t nFeeDelta;
+    int64_t nFeeDelta; // 交易优先
 };
 
 /** Reason why a transaction was removed from the mempool,
@@ -242,6 +245,8 @@ std::string RemovalReasonToString(const MemPoolRemovalReason& r) noexcept;
 /**
  * CTxMemPool stores valid-according-to-the-current-best-chain transactions
  * that may be included in the next block.
+ * 
+ * CTxMemPool 存储可能包含在下个块中的有效最佳链的交易
  *
  * Transactions are added when they are seen on the network (or created by the
  * local node), but not all transactions seen are added to the pool. For
@@ -251,6 +256,11 @@ std::string RemovalReasonToString(const MemPoolRemovalReason& r) noexcept;
  * the pool where the new transaction does not meet the Replace-By-Fee
  * requirements as defined in doc/policy/mempool-replacements.md.
  * - a non-standard transaction.
+ * 
+ * 交易在网络上出现（或由本地节点创建）时被添加，但并非所有看到的交易都被添加到池中。例如，以下新交易将不会添加到内存池中：
+ * 1. 不符合最低费用要求的交易
+ * 2. “双花”交易
+ * 3. 非标准交易
  *
  * CTxMemPool::mapTx, and CTxMemPoolEntry bookkeeping:
  *
@@ -260,6 +270,14 @@ std::string RemovalReasonToString(const MemPoolRemovalReason& r) noexcept;
  * - descendant feerate [we use max(feerate of tx, feerate of tx with all descendants)]
  * - time in mempool
  * - ancestor feerate [we use min(feerate of tx, feerate of tx with all unconfirmed ancestors)]
+ * 
+ * CTxMemPool::mapTx 和 CTxMemPoolEntry 记账：
+ * mapTx 是一个 boost::multi_index，它根据 5 个标准对 mempool 进行排序：
+ * 1. 交易hash
+ * 2. 见证交易hash
+ * 3. 子孙交易费率，取 max(交易费率，所有子孙交易费率)
+ * 4. 加入交易池的时间
+ * 5. 祖先交易费率，取 min(交易费率，所有未确认祖先的交易费率)
  *
  * Note: the term "descendant" refers to in-mempool transactions that depend on
  * this one, while "ancestor" refers to in-mempool transactions that a given
@@ -325,7 +343,7 @@ protected:
 
     mutable int64_t lastRollingFeeUpdate GUARDED_BY(cs){GetTime()};
     mutable bool blockSinceLastRollingFeeBump GUARDED_BY(cs){false};
-    mutable double rollingMinimumFeeRate GUARDED_BY(cs){0}; //!< minimum fee to get into the pool, decreases exponentially
+    mutable double rollingMinimumFeeRate GUARDED_BY(cs){0}; // 进入交易池的最低费用 //!< minimum fee to get into the pool, decreases exponentially
     mutable Epoch m_epoch GUARDED_BY(cs){};
 
     // In-memory counter for external mempool tracking purposes.
@@ -346,27 +364,27 @@ public:
     typedef boost::multi_index_container<
         CTxMemPoolEntry,
         boost::multi_index::indexed_by<
-            // sorted by txid
+            // sorted by txid 根据交易hash排序
             boost::multi_index::hashed_unique<mempoolentry_txid, SaltedTxidHasher>,
-            // sorted by wtxid
+            // sorted by wtxid 根据见证交易hash排序
             boost::multi_index::hashed_unique<
                 boost::multi_index::tag<index_by_wtxid>,
                 mempoolentry_wtxid,
                 SaltedTxidHasher
             >,
-            // sorted by fee rate
+            // sorted by fee rate 根据子孙交易费率排序
             boost::multi_index::ordered_non_unique<
                 boost::multi_index::tag<descendant_score>,
                 boost::multi_index::identity<CTxMemPoolEntry>,
                 CompareTxMemPoolEntryByDescendantScore
             >,
-            // sorted by entry time
+            // sorted by entry time 根据加入交易池时间排序
             boost::multi_index::ordered_non_unique<
                 boost::multi_index::tag<entry_time>,
                 boost::multi_index::identity<CTxMemPoolEntry>,
                 CompareTxMemPoolEntryByEntryTime
             >,
-            // sorted by fee rate with ancestors
+            // sorted by fee rate with ancestors 根据祖先交易费率排序
             boost::multi_index::ordered_non_unique<
                 boost::multi_index::tag<ancestor_score>,
                 boost::multi_index::identity<CTxMemPoolEntry>,

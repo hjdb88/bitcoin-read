@@ -127,6 +127,7 @@ struct update_for_parent_inclusion
 };
 
 /** Generate a new block, without valid proof-of-work */
+// 生成一个新区块，还未经过工作量证明
 class BlockAssembler
 {
 private:

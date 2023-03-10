@@ -32,6 +32,7 @@
 static const int SERIALIZE_TRANSACTION_NO_WITNESS = 0x40000000;
 
 /** An outpoint - a combination of a transaction hash and an index n into its vout */
+// 交易hash和下标合集
 class COutPoint
 {
 public:
@@ -74,9 +75,9 @@ public:
 class CTxIn
 {
 public:
-    COutPoint prevout;
-    CScript scriptSig;
-    uint32_t nSequence;
+    COutPoint prevout; // 上一笔交易的输出位置
+    CScript scriptSig; // 解锁脚本
+    uint32_t nSequence; // 序列号
     CScriptWitness scriptWitness; //!< Only serialized through CTransaction
 
     /**
@@ -85,6 +86,9 @@ public:
      * It fails OP_CHECKLOCKTIMEVERIFY/CheckLockTime() for any input that has
      * it set (BIP 65).
      * It has SEQUENCE_LOCKTIME_DISABLE_FLAG set (BIP 68/112).
+     * 如果交易每个输入 nSequence 都设置为该值将会禁用 nLockTime/IsFinalTx()
+     * 设置该值 OP_CHECKLOCKTIMEVERIFY/CheckLockTime() 将失败 (BIP 65) 。
+     * 它设置了 SEQUENCE_LOCKTIME_DISABLE_FLAG (BIP 68/112)。
      */
     static const uint32_t SEQUENCE_FINAL = 0xffffffff;
     /**
@@ -157,8 +161,8 @@ public:
 class CTxOut
 {
 public:
-    CAmount nValue;
-    CScript scriptPubKey;
+    CAmount nValue; // 金额数量
+    CScript scriptPubKey; // 锁定脚本（加密难题）
 
     CTxOut()
     {
@@ -290,22 +294,24 @@ inline CAmount CalculateOutputValue(const TxType& tx)
 
 /** The basic transaction that is broadcasted on the network and contained in
  * blocks.  A transaction can contain multiple inputs and outputs.
+ * 网络中广播的基本交易，包含在区块的数据结构。一个交易可以包含多个输入和输出
  */
 class CTransaction
 {
 public:
     // Default transaction version.
-    static const int32_t CURRENT_VERSION=2;
+    static const int32_t CURRENT_VERSION=2; // 交易版本号
 
     // The local variables are made const to prevent unintended modification
     // without updating the cached hash value. However, CTransaction is not
     // actually immutable; deserialization and assignment are implemented,
     // and bypass the constness. This is safe, as they update the entire
     // structure, including the hash.
-    const std::vector<CTxIn> vin;
-    const std::vector<CTxOut> vout;
-    const int32_t nVersion;
-    const uint32_t nLockTime;
+    // 将局部变量设置为const防止意外修改而不更新缓存hash。实际CTransaction实现反序列化，不是不可变。
+    const std::vector<CTxIn> vin; // 多个输入
+    const std::vector<CTxOut> vout; // 多个输出
+    const int32_t nVersion; // 版本号
+    const uint32_t nLockTime; // 锁定时间
 
 private:
     /** Memory only. */

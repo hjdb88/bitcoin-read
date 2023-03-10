@@ -22,12 +22,12 @@ class CBlockHeader
 {
 public:
     // header
-    int32_t nVersion;
-    uint256 hashPrevBlock;
-    uint256 hashMerkleRoot;
-    uint32_t nTime;
-    uint32_t nBits;
-    uint32_t nNonce;
+    int32_t nVersion; // 版本号
+    uint256 hashPrevBlock; // 上一个区块hash（实际计算时取得是前一区块头哈希）
+    uint256 hashMerkleRoot; // 默克尔树根hash
+    uint32_t nTime; // 区块时间
+    uint32_t nBits; // POW难度
+    uint32_t nNonce; // 符合POW的随机数
 
     CBlockHeader()
     {
@@ -69,10 +69,10 @@ class CBlock : public CBlockHeader
 {
 public:
     // network and disk
-    std::vector<CTransactionRef> vtx;
+    std::vector<CTransactionRef> vtx; // 所有交易的容器
 
     // memory only
-    mutable bool fChecked;
+    mutable bool fChecked; // 交易是否验证
 
     CBlock()
     {
@@ -116,6 +116,7 @@ public:
 /** Describes a place in the block chain to another node such that if the
  * other node doesn't have the same branch, it can find a recent common trunk.
  * The further back it is, the further before the fork it may be.
+ * 描述区块链中的一个位置，一个节点和其他节点没有相同的分支，它可以找到最近的共同主干。
  */
 struct CBlockLocator
 {

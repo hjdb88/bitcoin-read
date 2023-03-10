@@ -44,6 +44,7 @@
 
 uint256 ComputeMerkleRoot(std::vector<uint256> hashes, bool* mutated) {
     bool mutation = false;
+    // 逐层向上计算，直到计算到哈希根
     while (hashes.size() > 1) {
         if (mutated) {
             for (size_t pos = 0; pos + 1 < hashes.size(); pos += 2) {
@@ -51,6 +52,7 @@ uint256 ComputeMerkleRoot(std::vector<uint256> hashes, bool* mutated) {
             }
         }
         if (hashes.size() & 1) {
+            // 奇数个数交易，最后一个交易与自己配对
             hashes.push_back(hashes.back());
         }
         SHA256D64(hashes[0].begin(), hashes[0].begin(), hashes.size() / 2);

@@ -419,9 +419,11 @@ void CTxMemPool::addUnchecked(const CTxMemPoolEntry &entry, setEntries &setAnces
     // Add to memory pool without checking anything.
     // Used by AcceptToMemoryPool(), which DOES do
     // all the appropriate checks.
+    // 添加到内存池而不检查任何内容。由 AcceptToMemoryPool() 使用，它会执行所有适当的检查。
     indexed_transaction_set::iterator newit = mapTx.insert(entry).first;
 
     // Update transaction for any feeDelta created by PrioritiseTransaction
+    // 更新交易费用
     CAmount delta{0};
     ApplyDelta(entry.GetTx().GetHash(), delta);
     // The following call to UpdateModifiedFee assumes no previous fee modifications
@@ -433,6 +435,7 @@ void CTxMemPool::addUnchecked(const CTxMemPoolEntry &entry, setEntries &setAnces
     // Update cachedInnerUsage to include contained transaction's usage.
     // (When we update the entry for in-mempool parents, memory usage will be
     // further updated.)
+    // 更新内存使用量
     cachedInnerUsage += entry.DynamicMemoryUsage();
 
     const CTransaction& tx = newit->GetTx();
@@ -449,6 +452,7 @@ void CTxMemPool::addUnchecked(const CTxMemPoolEntry &entry, setEntries &setAnces
     // to clean up the mess we're leaving here.
 
     // Update ancestors with information about this tx
+    // 使用此交易的信息更新祖先
     for (const auto& pit : GetIterSet(setParentTransactions)) {
             UpdateParent(newit, pit, true);
     }

@@ -10,34 +10,45 @@
 #include <primitives/block.h>
 #include <uint256.h>
 
+// 获取下一次需要的工作量
+// 难度值计算公式：New Difficulty = Old Difficulty * (Actual Time of Last 2016 Blocks / 20160 minutes)
+// 每2016个区块调整一次，这样比特币的出块间隔就被稳定在10分种左右。
 unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock, const Consensus::Params& params)
 {
     assert(pindexLast != nullptr);
     unsigned int nProofOfWorkLimit = UintToArith256(params.powLimit).GetCompact();
 
     // Only change once per difficulty adjustment interval
+    // 每个难度值调整时间间隔只改变一次
+    // 块高是否是2016个区块的整数倍，如果不是就不用调整难度，就沿用用当前区块链顶点区块的难度值
     if ((pindexLast->nHeight+1) % params.DifficultyAdjustmentInterval() != 0)
     {
+        // 是否允许最小难度值
         if (params.fPowAllowMinDifficultyBlocks)
         {
             // Special difficulty rule for testnet:
             // If the new block's timestamp is more than 2* 10 minutes
             // then allow mining of a min-difficulty block.
+            // 测试网络特殊规则：
+            // 新区块的时间戳超过20分钟，则允许最小难度区块挖矿
             if (pblock->GetBlockTime() > pindexLast->GetBlockTime() + params.nPowTargetSpacing*2)
                 return nProofOfWorkLimit;
             else
             {
                 // Return the last non-special-min-difficulty-rules-block
+                // 返回最后一个非特殊最小难度规则块
                 const CBlockIndex* pindex = pindexLast;
                 while (pindex->pprev && pindex->nHeight % params.DifficultyAdjustmentInterval() != 0 && pindex->nBits == nProofOfWorkLimit)
                     pindex = pindex->pprev;
                 return pindex->nBits;
             }
         }
+        // 返回新区块的nBits值
         return pindexLast->nBits;
     }
 
     // Go back by what we want to be 14 days worth of blocks
+    // 返回我们想要的 14 天的区块
     int nHeightFirst = pindexLast->nHeight - (params.DifficultyAdjustmentInterval()-1);
     assert(nHeightFirst >= 0);
     const CBlockIndex* pindexFirst = pindexLast->GetAncestor(nHeightFirst);
@@ -46,8 +57,10 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHead
     return CalculateNextWorkRequired(pindexLast, pindexFirst->GetBlockTime(), params);
 }
 
+// 计算下一次工作量证明（难度值）
 unsigned int CalculateNextWorkRequired(const CBlockIndex* pindexLast, int64_t nFirstBlockTime, const Consensus::Params& params)
 {
+    // 如果不调整难度值
     if (params.fPowNoRetargeting)
         return pindexLast->nBits;
 
@@ -122,6 +135,7 @@ bool PermittedDifficultyTransition(const Consensus::Params& params, int64_t heig
     return true;
 }
 
+// 校验工作量证明
 bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params& params)
 {
     bool fNegative;

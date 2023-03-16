@@ -128,6 +128,7 @@ void AddOutputs(CMutableTransaction& rawTx, const UniValue& outputs_in)
     }
 }
 
+// 构造交易
 CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniValue& outputs_in, const UniValue& locktime, std::optional<bool> rbf)
 {
     CMutableTransaction rawTx;
@@ -139,7 +140,9 @@ CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniVal
         rawTx.nLockTime = nLockTime;
     }
 
+    // 添加输入
     AddInputs(rawTx, inputs_in, rbf);
+    // 添加输出
     AddOutputs(rawTx, outputs_in);
 
     if (rbf.has_value() && rbf.value() && rawTx.vin.size() > 0 && !SignalsOptInRBF(CTransaction(rawTx))) {

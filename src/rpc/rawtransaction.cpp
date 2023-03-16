@@ -362,8 +362,10 @@ static RPCHelpMan createrawtransaction()
     if (!request.params[3].isNull()) {
         rbf = request.params[3].get_bool();
     }
+    // 构造交易（包括交易的输入vin、输出vout及锁定脚本），返回序列化数据
     CMutableTransaction rawTx = ConstructTransaction(request.params[0], request.params[1], request.params[2], rbf);
 
+    // 哈希
     return EncodeHexTx(CTransaction(rawTx));
 },
     };

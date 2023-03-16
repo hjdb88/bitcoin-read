@@ -2933,6 +2933,8 @@ CBlockIndex* Chainstate::FindMostWorkChain()
     do {
         CBlockIndex *pindexNew = nullptr;
 
+        // 从后往前遍历候选链
+        // setBlockIndexCandidates是候选链的集合，且按照一定的规则排序，越符合要求的链在越后面
         // Find the best candidate header.
         {
             std::set<CBlockIndex*, CBlockIndexWorkComparator>::reverse_iterator it = setBlockIndexCandidates.rbegin();
@@ -2941,6 +2943,7 @@ CBlockIndex* Chainstate::FindMostWorkChain()
             pindexNew = *it;
         }
 
+        // 遍历链上的区块，检查是否存在不合法的区块
         // Check whether all blocks on the path between the currently active chain and the candidate are valid.
         // Just going until the active chain is an optimization, as we know all blocks in it are valid already.
         CBlockIndex *pindexTest = pindexNew;
@@ -2952,6 +2955,7 @@ CBlockIndex* Chainstate::FindMostWorkChain()
             // which block files have been deleted.  Remove those as candidates
             // for the most work chain if we come across them; we can't switch
             // to a chain unless we have all the non-active-chain parent blocks.
+            // 若存在不合法的区块，则删除该链
             bool fFailedChain = pindexTest->nStatus & BLOCK_FAILED_MASK;
             bool fMissingData = !(pindexTest->nStatus & BLOCK_HAVE_DATA);
             if (fFailedChain || fMissingData) {
@@ -2980,6 +2984,7 @@ CBlockIndex* Chainstate::FindMostWorkChain()
             }
             pindexTest = pindexTest->pprev;
         }
+        // 若不存在违法区块，则返回该链
         if (!fInvalidAncestor)
             return pindexNew;
     } while(true);
@@ -3173,6 +3178,7 @@ bool Chainstate::ActivateBestChain(BlockValidationState& state, std::shared_ptr<
                 // (with the exception of shutdown due to hardware issues, low disk space, etc).
                 ConnectTrace connectTrace; // Destructed before cs_main is unlocked
 
+                // 获取最长链（最大工作量证明），删除不合法的候选链
                 if (pindexMostWork == nullptr) {
                     pindexMostWork = FindMostWorkChain();
                 }
@@ -3182,6 +3188,7 @@ bool Chainstate::ActivateBestChain(BlockValidationState& state, std::shared_ptr<
                     break;
                 }
 
+                // 更新当前链为最长的链
                 bool fInvalidFound = false;
                 std::shared_ptr<const CBlock> nullBlockPtr;
                 if (!ActivateBestChainStep(state, pindexMostWork, pblock && pblock->GetHash() == pindexMostWork->GetBlockHash() ? pblock : nullBlockPtr, fInvalidFound, connectTrace)) {
@@ -3196,6 +3203,7 @@ bool Chainstate::ActivateBestChain(BlockValidationState& state, std::shared_ptr<
                 }
                 pindexNewTip = m_chain.Tip();
 
+                // 通知各监听器当前链发生变化
                 for (const PerBlockConnectTrace& trace : connectTrace.GetBlocksConnected()) {
                     assert(trace.pblock && trace.pindex);
                     GetMainSignals().BlockConnected(trace.pblock, trace.pindex);
@@ -3217,6 +3225,7 @@ bool Chainstate::ActivateBestChain(BlockValidationState& state, std::shared_ptr<
 
             // Notify external listeners about the new tip.
             // Enqueue while holding cs_main to ensure that UpdatedBlockTip is called in the order in which blocks are connected
+            // 将最长链的高度和新区块告诉其它节点
             if (pindexFork != pindexNewTip) {
                 // Notify ValidationInterface subscribers
                 GetMainSignals().UpdatedBlockTip(pindexNewTip, pindexFork, fInitialDownload);
@@ -3516,6 +3525,7 @@ bool CheckBlock(const CBlock& block, BlockValidationState& state, const Consensu
 {
     // These are checks that are independent of context.
 
+    // 如果区块已验证，则直接返回
     if (block.fChecked)
         return true;
 
@@ -3577,6 +3587,7 @@ bool CheckBlock(const CBlock& block, BlockValidationState& state, const Consensu
                                  strprintf("Transaction check failed (tx hash %s) %s", tx->GetHash().ToString(), tx_state.GetDebugMessage()));
         }
     }
+    // sigops个数不能超过限定值
     unsigned int nSigOps = 0;
     for (const auto& tx : block.vtx)
     {
@@ -3935,6 +3946,7 @@ void ChainstateManager::ReportHeadersPresync(const arith_uint256& work, int64_t 
 }
 
 /** Store block on disk. If dbp is non-nullptr, the file is known to already reside on disk */
+// 用于接收区块，负责基本的验证、链接到对应链上、广播到网络中、保存到本地磁盘等。
 bool Chainstate::AcceptBlock(const std::shared_ptr<const CBlock>& pblock, BlockValidationState& state, CBlockIndex** ppindex, bool fRequested, const FlatFilePos* dbp, bool* fNewBlock, bool min_pow_checked)
 {
     const CBlock& block = *pblock;
@@ -3945,6 +3957,9 @@ bool Chainstate::AcceptBlock(const std::shared_ptr<const CBlock>& pblock, BlockV
     CBlockIndex *pindexDummy = nullptr;
     CBlockIndex *&pindex = ppindex ? *ppindex : pindexDummy;
 
+    // 1. 接收区块头：
+    //   检查是否有重复区块头、是否存在父区块、是否延续于不合法区块之后（分叉情况）
+    //   将区块头链接到对应的链上（可能会出现分叉情况）
     bool accepted_header{m_chainman.AcceptBlockHeader(block, state, &pindex, min_pow_checked)};
     CheckBlockIndex();
 
@@ -3986,6 +4001,7 @@ bool Chainstate::AcceptBlock(const std::shared_ptr<const CBlock>& pblock, BlockV
 
     const CChainParams& params{m_chainman.GetParams()};
 
+    // 再一次检查区块
     if (!CheckBlock(block, state, params.GetConsensus()) ||
         !ContextualCheckBlock(block, state, m_chainman, pindex->pprev)) {
         if (state.IsInvalid() && state.GetResult() != BlockValidationResult::BLOCK_MUTATED) {
@@ -3998,10 +4014,11 @@ bool Chainstate::AcceptBlock(const std::shared_ptr<const CBlock>& pblock, BlockV
     // Header is valid/has work, merkle tree and segwit merkle tree are good...RELAY NOW
     // (but if it does not build on our best tip, let the SendMessages loop relay it)
     if (!IsInitialBlockDownload() && m_chain.Tip() == pindex->pprev)
-        // 如果是最新区块，广播出去
+        // 如果这个区块延续在当前的最佳链上，则调用src\net_processing.cpp中的PeerManagerImpl::NewPoWValidBlock函数广播这个区块
         GetMainSignals().NewPoWValidBlock(pindex, pblock);
 
     // Write block to history file
+    // 将这个区块写入到磁盘中
     if (fNewBlock) *fNewBlock = true;
     try {
         FlatFilePos blockPos{m_blockman.SaveBlockToDisk(block, pindex->nHeight, m_chain, params, dbp)};
@@ -4040,10 +4057,11 @@ bool ChainstateManager::ProcessNewBlock(const std::shared_ptr<const CBlock>& blo
         // malleability that cause CheckBlock() to fail; see e.g. CVE-2012-2459 and
         // https://lists.linuxfoundation.org/pipermail/bitcoin-dev/2019-February/016697.html.  Because CheckBlock() is
         // not very expensive, the anti-DoS benefits of caching failure (of a definitely-invalid block) are not substantial.
-        // 校验新区块，校验通过存入磁盘
+        // 校验新区块
         bool ret = CheckBlock(*block, state, GetConsensus());
         if (ret) {
             // Store to disk
+            // 接受区块存入磁盘
             ret = ActiveChainstate().AcceptBlock(block, state, &pindex, force_processing, nullptr, new_block, min_pow_checked);
         }
         if (!ret) {
@@ -4055,7 +4073,7 @@ bool ChainstateManager::ProcessNewBlock(const std::shared_ptr<const CBlock>& blo
     NotifyHeaderTip(ActiveChainstate());
 
     BlockValidationState state; // Only used to report errors, not invalidity - ignore it
-    // 加入最长链
+    // 加入最长链，更新当前链为最长链
     if (!ActiveChainstate().ActivateBestChain(state, block)) {
         return error("%s: ActivateBestChain failed (%s)", __func__, state.ToString());
     }

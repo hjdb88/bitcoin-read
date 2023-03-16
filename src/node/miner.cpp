@@ -117,16 +117,17 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     CBlock* const pblock = &pblocktemplate->block; // pointer for convenience
 
     // Add dummy coinbase tx as first transaction
+    // 区块中的第一个位置留给coinbase交易
     pblock->vtx.emplace_back();
     pblocktemplate->vTxFees.push_back(-1); // updated at end
     pblocktemplate->vTxSigOpsCost.push_back(-1); // updated at end
 
     LOCK(::cs_main);
-    CBlockIndex* pindexPrev = m_chainstate.m_chain.Tip(); // 选择当前最长链，最高区块
+    CBlockIndex* pindexPrev = m_chainstate.m_chain.Tip(); // 选择当前最长链，最高区块，作为新区块的父区块
     assert(pindexPrev != nullptr);
     nHeight = pindexPrev->nHeight + 1;
 
-    // 设置版本号字段
+    // 计算区块版本，设置版本号字段
     pblock->nVersion = m_chainstate.m_chainman.m_versionbitscache.ComputeBlockVersion(pindexPrev, chainparams.GetConsensus());
     // -regtest only: allow overriding block.nVersion with
     // -blockversion=N to test forking scenarios
@@ -142,7 +143,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     int nDescendantsUpdated = 0;
     if (m_mempool) {
         LOCK(m_mempool->cs);
-        // 添加交易池中的交易到区块中
+        // 添加交易池中的交易到区块中（并不会从交易池中将交易删除，删除需要等区块确认以后）
         addPackageTxs(*m_mempool, nPackagesSelected, nDescendantsUpdated);
     }
 
@@ -160,7 +161,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     coinbaseTx.vout.resize(1);
     // 锁定脚本
     coinbaseTx.vout[0].scriptPubKey = scriptPubKeyIn;
-    // 计算交易费+挖矿奖励
+    // 计算交易费（在addPackageTxs时会进行统计）+挖矿奖励
     coinbaseTx.vout[0].nValue = nFees + GetBlockSubsidy(nHeight, chainparams.GetConsensus());
     coinbaseTx.vin[0].scriptSig = CScript() << nHeight << OP_0;
     // Coinbase交易放到交易列表的第一位，区块中的第一笔交易
@@ -172,10 +173,11 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     LogPrintf("CreateNewBlock(): block weight: %u txs: %u fees: %ld sigops %d\n", GetBlockWeight(*pblock), nBlockTx, nFees, nBlockSigOpsCost);
 
     // Fill in header
+    // 填充区块头
     // 设置区块头中前一区块哈希字段
     pblock->hashPrevBlock  = pindexPrev->GetBlockHash();
     UpdateTime(pblock, chainparams.GetConsensus(), pindexPrev);
-    // 计算难度值，设置难度值字段
+    // 计算难度值，设置新区块的工作量难度目标值
     pblock->nBits          = GetNextWorkRequired(pindexPrev, pblock, chainparams.GetConsensus());
     // 随机数，初始置为0，等待后面不断调整
     pblock->nNonce         = 0;

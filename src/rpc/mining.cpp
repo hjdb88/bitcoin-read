@@ -121,6 +121,7 @@ static bool GenerateBlock(ChainstateManager& chainman, CBlock& block, uint64_t& 
     block.hashMerkleRoot = BlockMerkleRoot(block);
 
     // 不断改变nNonce，计算难度值
+    // 调用CheckProofOfWork函数检查是否满足工作量证明，即区块哈希小于目标值
     while (max_tries > 0 && block.nNonce < std::numeric_limits<uint32_t>::max() && !CheckProofOfWork(block.GetHash(), block.nBits, chainman.GetConsensus()) && !ShutdownRequested()) {
         ++block.nNonce;
         --max_tries;
@@ -133,6 +134,7 @@ static bool GenerateBlock(ChainstateManager& chainman, CBlock& block, uint64_t& 
     }
 
     std::shared_ptr<const CBlock> shared_pblock = std::make_shared<const CBlock>(block);
+    // 调用ProcessNewBlock处理新区块：验证区块、接收区块（链接到对应链上、广播到网络中等）、更新最长链
     if (!chainman.ProcessNewBlock(shared_pblock, /*force_processing=*/true, /*min_pow_checked=*/true, nullptr)) {
         throw JSONRPCError(RPC_INTERNAL_ERROR, "ProcessNewBlock, block not accepted");
     }
@@ -147,13 +149,14 @@ static UniValue generateBlocks(ChainstateManager& chainman, const CTxMemPool& me
     // 如果不到指定区块高度或者没有停止挖矿请求就一直挖矿
     while (nGenerate > 0 && !ShutdownRequested()) {
         // 构造新区块
+        // chainman.ActiveChainstate()会获取当前最长链，新区块将会基于最长链延续
         std::unique_ptr<CBlockTemplate> pblocktemplate(BlockAssembler{chainman.ActiveChainstate(), &mempool}.CreateNewBlock(coinbase_script));
         if (!pblocktemplate.get())
             throw JSONRPCError(RPC_INTERNAL_ERROR, "Couldn't create new block");
         CBlock* pblock = &pblocktemplate->block;
 
         uint256 block_hash;
-        // 生成区块
+        // 生成区块：遍历区块的nonce值，使得区块哈希值满足工作量证明
         if (!GenerateBlock(chainman, *pblock, nMaxTries, block_hash)) {
             break;
         }
@@ -241,7 +244,7 @@ static RPCHelpMan generate()
                       }};
 }
 
-// 开启挖矿流程后，进入这里
+// 创建区块。开启挖矿流程后，进入这里
 static RPCHelpMan generatetoaddress()
 {
     return RPCHelpMan{

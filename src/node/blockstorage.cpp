@@ -30,6 +30,7 @@ std::atomic_bool fReindex(false);
 bool fPruneMode = false;
 uint64_t nPruneTarget = 0;
 
+// 候选链集合的排序规则
 bool CBlockIndexWorkComparator::operator()(const CBlockIndex* pa, const CBlockIndex* pb) const
 {
     // First sort by most total work, ...

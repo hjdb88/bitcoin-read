@@ -243,6 +243,7 @@ static bool AppInit(NodeContext& node, int argc, char* argv[])
     return fRet;
 }
 
+// bitcoin启动
 MAIN_FUNCTION
 {
 #ifdef WIN32

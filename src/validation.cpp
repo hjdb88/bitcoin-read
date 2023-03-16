@@ -679,6 +679,7 @@ private:
     bool m_rbf{false};
 };
 
+// 全方位检查交易
 bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
 {
     AssertLockHeld(cs_main);
@@ -696,31 +697,37 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
     TxValidationState& state = ws.m_state;
     std::unique_ptr<CTxMemPoolEntry>& entry = ws.m_entry;
 
+    // 校验交易
     if (!CheckTransaction(tx, state)) {
         return false; // state filled in by CheckTransaction
     }
 
     // Coinbase is only valid in a block, not as a loose transaction
+    // 这笔被接受的交易不能是coinbase
     if (tx.IsCoinBase())
         return state.Invalid(TxValidationResult::TX_CONSENSUS, "coinbase");
 
     // Rather not work on nonstandard transactions (unless -testnet/-regtest)
     std::string reason;
+    // IsStandardTx检查是否为标准交易
     if (m_pool.m_require_standard && !IsStandardTx(tx, m_pool.m_max_datacarrier_bytes, m_pool.m_permit_bare_multisig, m_pool.m_dust_relay_feerate, reason)) {
         return state.Invalid(TxValidationResult::TX_NOT_STANDARD, reason);
     }
 
     // Transactions smaller than 65 non-witness bytes are not relayed to mitigate CVE-2017-12842.
+    // 交易字节大小不能太小
     if (::GetSerializeSize(tx, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) < MIN_STANDARD_TX_NONWITNESS_SIZE)
         return state.Invalid(TxValidationResult::TX_NOT_STANDARD, "tx-size-small");
 
     // Only accept nLockTime-using transactions that can be mined in the next
     // block; we don't want our mempool filled up with transactions that can't
     // be mined yet.
+    // 只接受nLockTime满足要求、能够被打包进下一个被挖区块中的交易，防止交易过多溢出交易池
     if (!CheckFinalTxAtTip(*Assert(m_active_chainstate.m_chain.Tip()), tx)) {
         return state.Invalid(TxValidationResult::TX_PREMATURE_SPEND, "non-final");
     }
 
+    // 检查交易是否在交易池中或者相同未认证的数据已在交易池中
     if (m_pool.exists(GenTxid::Wtxid(tx.GetWitnessHash()))) {
         // Exact transaction already exists in the mempool.
         return state.Invalid(TxValidationResult::TX_CONFLICT, "txn-already-in-mempool");
@@ -731,6 +738,7 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
     }
 
     // Check for conflicts with in-memory transactions
+    // 防止双花：检查交易输入所指向的上一笔交易输出是否与交易池中某笔交易的一样
     for (const CTxIn &txin : tx.vin)
     {
         const CTransaction* ptxConflicting = m_pool.GetConflictTx(txin.prevout);
@@ -762,6 +770,7 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
 
     m_view.SetBackend(m_viewmempool);
 
+    // 检查交易所有输入的来源(UTXO)是否已在缓存中，若不在则获取
     const CCoinsViewCache& coins_cache = m_active_chainstate.CoinsTip();
     // do all inputs exist?
     for (const CTxIn& txin : tx.vin) {
@@ -801,16 +810,19 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
     // be mined yet.
     // Pass in m_view which has all of the relevant inputs cached. Note that, since m_view's
     // backend was removed, it no longer pulls coins from the mempool.
+    // 检查时间锁sequence是否满足要求，即可以被打包进下一个待挖区块中，不然就丢弃
     const std::optional<LockPoints> lock_points{CalculateLockPointsAtTip(m_active_chainstate.m_chain.Tip(), m_view, tx)};
     if (!lock_points.has_value() || !CheckSequenceLocksAtTip(m_active_chainstate.m_chain.Tip(), *lock_points)) {
         return state.Invalid(TxValidationResult::TX_PREMATURE_SPEND, "non-BIP68-final");
     }
 
     // The mempool holds txs for the next block, so pass height+1 to CheckTxInputs
+    // 检查交易的输入
     if (!Consensus::CheckTxInputs(tx, state, m_view, m_active_chainstate.m_chain.Height() + 1, ws.m_base_fees)) {
         return false; // state filled in by CheckTxInputs
     }
 
+    // 检查输入和输入的见证脚本是否符合标准（解锁脚本能否解开prevout的锁定脚本）
     if (m_pool.m_require_standard && !AreInputsStandard(tx, m_view)) {
         return state.Invalid(TxValidationResult::TX_INPUTS_NOT_STANDARD, "bad-txns-nonstandard-inputs");
     }
@@ -841,6 +853,7 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
                                     fSpendsCoinbase, nSigOpsCost, lock_points.value()));
     ws.m_vsize = entry->GetTxSize();
 
+    // 交易中的签名数量(sigops)应小于签名操作数量上限
     if (nSigOpsCost > MAX_STANDARD_TX_SIGOPS_COST)
         return state.Invalid(TxValidationResult::TX_NOT_STANDARD, "bad-txns-too-many-sigops",
                 strprintf("%d", nSigOpsCost));
@@ -1125,7 +1138,7 @@ bool MemPoolAccept::SubmitPackage(const ATMPArgs& args, std::vector<Workspace>& 
     // CheckInputsFromMempoolAndCache asserts that transactions only spend coins available from the
     // mempool or UTXO set. Submit each transaction to the mempool immediately after calling
     // ConsensusScriptChecks to make the outputs available for subsequent transactions.
-    // ConsensusScriptChecks 添加到脚本缓存中，因此对共识至关重要； 
+    // ConsensusScriptChecks 添加到脚本缓存中，因此对共识至关重要；
     // CheckInputsFromMempoolAndCache 断言交易仅花费内存池或 UTXO 集中可用的硬币。
     // 在调用 ConsensusScriptChecks 后立即将每笔交易提交到内存池，以使输出可用于后续交易。
     for (Workspace& ws : workspaces) {
@@ -1212,6 +1225,7 @@ MempoolAcceptResult MemPoolAccept::AcceptSingleTransaction(const CTransactionRef
 
     Workspace ws(ptx);
 
+    // PreChecks对交易进行全方位检查
     if (!PreChecks(args, ws)) return MempoolAcceptResult::Failure(ws.m_state);
 
     if (m_rbf && !ReplacementChecks(ws)) return MempoolAcceptResult::Failure(ws.m_state);
@@ -1484,6 +1498,7 @@ PackageMempoolAcceptResult MemPoolAccept::AcceptPackage(const Package& package, 
 
 } // anon namespace
 
+// 加入内存池
 MempoolAcceptResult AcceptToMemoryPool(Chainstate& active_chainstate, const CTransactionRef& tx,
                                        int64_t accept_time, bool bypass_limits, bool test_accept)
     EXCLUSIVE_LOCKS_REQUIRED(::cs_main)
@@ -1495,6 +1510,7 @@ MempoolAcceptResult AcceptToMemoryPool(Chainstate& active_chainstate, const CTra
 
     std::vector<COutPoint> coins_to_uncache;
     auto args = MemPoolAccept::ATMPArgs::SingleAccept(chainparams, accept_time, bypass_limits, coins_to_uncache, test_accept);
+    // 接收交易入口
     MempoolAcceptResult result = MemPoolAccept(pool, active_chainstate).AcceptSingleTransaction(tx, args);
     if (result.m_result_type != MempoolAcceptResult::ResultType::VALID) {
         // Remove coins that were not present in the coins cache before calling
@@ -4047,6 +4063,7 @@ bool ChainstateManager::ProcessNewBlock(const std::shared_ptr<const CBlock>& blo
     return true;
 }
 
+// 处理交易
 MempoolAcceptResult ChainstateManager::ProcessTransaction(const CTransactionRef& tx, bool test_accept)
 {
     AssertLockHeld(cs_main);
@@ -4056,6 +4073,7 @@ MempoolAcceptResult ChainstateManager::ProcessTransaction(const CTransactionRef&
         state.Invalid(TxValidationResult::TX_NO_MEMPOOL, "no-mempool");
         return MempoolAcceptResult::Failure(state);
     }
+    // 加入内存池
     auto result = AcceptToMemoryPool(active_chainstate, tx, GetTime(), /*bypass_limits=*/ false, test_accept);
     active_chainstate.GetMempool()->check(active_chainstate.CoinsTip(), active_chainstate.m_chain.Height() + 1);
     return result;

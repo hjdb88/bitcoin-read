@@ -165,9 +165,11 @@ int64_t GetTransactionSigOpCost(const CTransaction& tx, const CCoinsViewCache& i
     return nSigOps;
 }
 
+// 检查交易的输入
 bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, const CCoinsViewCache& inputs, int nSpendHeight, CAmount& txfee)
 {
     // are the actual inputs available?
+    // 检查输入的来源(UTXO)是否都在缓存中
     if (!inputs.HaveInputs(tx)) {
         return state.Invalid(TxValidationResult::TX_MISSING_INPUTS, "bad-txns-inputs-missingorspent",
                          strprintf("%s: inputs missing/spent", __func__));
@@ -177,21 +179,25 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
     for (unsigned int i = 0; i < tx.vin.size(); ++i) {
         const COutPoint &prevout = tx.vin[i].prevout;
         const Coin& coin = inputs.AccessCoin(prevout);
+        // 输入来源不能被双花
         assert(!coin.IsSpent());
 
         // If prev is coinbase, check that it's matured
+        // 如果来源是coinbase，检查是否成熟（确认数不小于100）
         if (coin.IsCoinBase() && nSpendHeight - coin.nHeight < COINBASE_MATURITY) {
             return state.Invalid(TxValidationResult::TX_PREMATURE_SPEND, "bad-txns-premature-spend-of-coinbase",
                 strprintf("tried to spend coinbase at depth %d", nSpendHeight - coin.nHeight));
         }
 
         // Check for negative or overflow input values
+        // 检查每一个输入值和总值是否在限定范围内
         nValueIn += coin.out.nValue;
         if (!MoneyRange(coin.out.nValue) || !MoneyRange(nValueIn)) {
             return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-inputvalues-outofrange");
         }
     }
 
+    // 交易输出总值不能大于输入总值
     const CAmount value_out = tx.GetValueOut();
     if (nValueIn < value_out) {
         return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-in-belowout",
@@ -199,6 +205,7 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
     }
 
     // Tally transaction fees
+    // 交易的矿工费用需在规定范围内
     const CAmount txfee_aux = nValueIn - value_out;
     if (!MoneyRange(txfee_aux)) {
         return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-fee-outofrange");

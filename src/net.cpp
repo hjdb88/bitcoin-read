@@ -2032,6 +2032,7 @@ void CConnman::OpenNetworkConnection(const CAddress& addrConnect, bool fCountFai
 
 Mutex NetEventsInterface::g_msgproc_mutex;
 
+// 处理消息
 void CConnman::ThreadMessageHandler()
 {
     LOCK(NetEventsInterface::g_msgproc_mutex);
@@ -2052,6 +2053,7 @@ void CConnman::ThreadMessageHandler()
                     continue;
 
                 // Receive messages
+                // 接收消息并处理
                 bool fMoreNodeWork = m_msgproc->ProcessMessages(pnode, flagInterruptMsgProc);
                 fMoreWork |= (fMoreNodeWork && !pnode->fPauseSend);
                 if (flagInterruptMsgProc)
@@ -2307,6 +2309,7 @@ bool CConnman::InitBinds(const Options& options)
     return fBound;
 }
 
+// 开启网络
 bool CConnman::Start(CScheduler& scheduler, const Options& connOptions)
 {
     AssertLockNotHeld(m_total_bytes_sent_mutex);
@@ -2394,6 +2397,7 @@ bool CConnman::Start(CScheduler& scheduler, const Options& connOptions)
     }
 
     // Process messages
+    // 处理消息
     threadMessageHandler = std::thread(&util::TraceThread, "msghand", [this] { ThreadMessageHandler(); });
 
     if (m_i2p_sam_session) {

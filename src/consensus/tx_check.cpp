@@ -18,6 +18,7 @@ bool CheckTransaction(const CTransaction& tx, TxValidationState& state)
     if (tx.vout.empty())
         return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-vout-empty");
     // Size limits (this doesn't take the witness into account, as that hasn't been checked for malleability)
+    // 检查交易大小不能超过MAX_BLOCK_WEIGHT
     if (::GetSerializeSize(tx, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT)
         return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-oversize");
 
@@ -49,11 +50,13 @@ bool CheckTransaction(const CTransaction& tx, TxValidationState& state)
 
     if (tx.IsCoinBase())
     {
+        // 如果是coinbase交易，检查输入中解锁脚本的大小
         if (tx.vin[0].scriptSig.size() < 2 || tx.vin[0].scriptSig.size() > 100)
             return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-cb-length");
     }
     else
     {
+        // 若不是coinbase交易，检查输入对应的来源不能为空
         for (const auto& txin : tx.vin)
             if (txin.prevout.IsNull())
                 return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-prevout-null");

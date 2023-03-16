@@ -3161,6 +3161,7 @@ void PeerManagerImpl::ProcessBlock(CNode& node, const std::shared_ptr<const CBlo
     }
 }
 
+// 处理交易，根据信息类型进行不同的处理
 void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, CDataStream& vRecv,
                                      const std::chrono::microseconds time_received,
                                      const std::atomic<bool>& interruptMsgProc)
@@ -3976,6 +3977,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         return;
     }
 
+    // 如果消息是交易类型
     if (msg_type == NetMsgType::TX) {
         if (RejectIncomingTxs(pfrom)) {
             LogPrint(BCLog::NET, "transaction sent in violation of protocol peer=%d\n", pfrom.GetId());
@@ -4038,6 +4040,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
             return;
         }
 
+        // 处理交易，校验通过放入内存池中
         const MempoolAcceptResult result = m_chainman.ProcessTransaction(ptx);
         const TxValidationState& state = result.m_state;
 
@@ -4851,6 +4854,7 @@ bool PeerManagerImpl::MaybeDiscourageAndDisconnect(CNode& pnode, Peer& peer)
     return true;
 }
 
+// 消息处理
 bool PeerManagerImpl::ProcessMessages(CNode* pfrom, std::atomic<bool>& interruptMsgProc)
 {
     AssertLockHeld(g_msgproc_mutex);
@@ -4912,6 +4916,7 @@ bool PeerManagerImpl::ProcessMessages(CNode* pfrom, std::atomic<bool>& interrupt
     msg.SetVersion(pfrom->GetCommonVersion());
 
     try {
+        // 处理消息
         ProcessMessage(*pfrom, msg.m_type, msg.m_recv, msg.m_time, interruptMsgProc);
         if (interruptMsgProc) return false;
         {
